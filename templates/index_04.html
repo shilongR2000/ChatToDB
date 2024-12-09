@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Assistant</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <style>
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #666;
+        }
+
+        /* Custom classes */
+        .chat-window {
+            height: calc(100vh - 220px);
+            min-height: 500px;
+        }
+        
+        .message-container {
+            height: calc(100% - 70px);
+            overflow-y: auto;
+        }
+        
+        .message-box {
+            max-width: 85%;
+        }
+        
+        .message-content {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .table-wrapper {
+            max-height: 400px;
+            overflow: auto;
+            background: white;
+            border-radius: 0.5rem;
+        }
+
+        .table {
+            margin: 0;
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        .table th {
+            background: #f3f4f6;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .table th, .table td {
+            padding: 8px 12px;
+            border: 1px solid #e5e7eb;
+            white-space: nowrap;
+        }
+
+        .schema-box {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .schema-item {
+            background: #f8fafc;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            min-width: 200px;
+            flex: 1;
+        }
+
+        .loading {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="max-w-6xl mx-auto p-4">
+        <!-- Header Section -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-4">
+            <h1 class="text-2xl font-bold mb-4">Database Assistant</h1>
+            
+            <!-- Database Controls -->
+            <div class="flex gap-4 flex-wrap">
+                <div class="flex gap-4">
+                    <button onclick="switchDB('mysql')" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded transition">
+                        MySQL
+                    </button>
+                    <button onclick="switchDB('mongodb')" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded transition">
+                        MongoDB
+                    </button>
+                </div>
+                
+                <div class="flex gap-4 flex-1">
+                    <select id="database-select" class="flex-1 p-2 border rounded" onchange="loadDatabaseInfo()">
+                        <option value="">Select a database</option>
+                    </select>
+
+                    <button onclick="createNewDatabase()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded transition">
+                        Create Database
+                    </button>
+                    
+                    <div class="flex gap-2 items-center">
+                        <input type="file" id="file-upload" class="hidden" onchange="handleFileSelect()">
+                        <label for="file-upload" class="cursor-pointer bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded transition">
+                            Choose File
+                        </label>
+                        <button id="upload-btn" onclick="uploadFile()" class="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded transition" disabled>
+                            Upload
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Interface -->
+        <div class="bg-white rounded-lg shadow-lg p-4 chat-window relative">
+            <!-- Loading Indicator -->
+            <div class="loading">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            </div>
+
+            <!-- Messages Area -->
+            <div id="chat-messages" class="message-container">
+                <div class="flex gap-3 mb-4">
+                    <div class="flex-shrink-0">
+                        <div class="bg-blue-500 text-white rounded-full w-8 h-8 flex items-center justify-center">
+                            A
+                        </div>
+                    </div>
+                    <div class="message-box bg-gray-100 rounded-lg p-4">
+                        <div class="message-content">
+                            <p>Hello! I'm your database assistant. Please select a database type and database to begin.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="border-t mt-4 pt-4">
+                <div class="flex gap-4">
+                    <input type="text" id="query-input" 
+                           class="flex-1 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           placeholder="Type your query here..."
+                           onkeypress="if(event.key === 'Enter') submitQuery()">
+                    <button onclick="submitQuery()" 
+                            class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded transition">
+                        Send
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentFile = null;
+
+        function showLoading() {
+            document.querySelector('.loading').style.display = 'block';
+        }
+
+        function hideLoading() {
+            document.querySelector('.loading').style.display = 'none';
+        }
+
+        function handleFileSelect() {
+            const fileInput = document.getElementById('file-upload');
+            const uploadBtn = document.getElementById('upload-btn');
+            currentFile = fileInput.files[0];
+            uploadBtn.disabled = !currentFile;
+        }
+
+        function addMessage(content, isUser = false, type = 'text') {
+            const messagesDiv = document.getElementById('chat-messages');
+            let contentHtml = '';
+            
+            if (type === 'text') {
+                contentHtml = `<div class="message-content">${content}</div>`;
+            } else if (type === 'table') {
+                contentHtml = `<div class="table-wrapper">${content}</div>`;
+            } else if (type === 'schema') {
+                contentHtml = `<div class="schema-box">${content}</div>`;
+            }
+            
+            const messageHtml = `
+                <div class="flex gap-3 mb-4 ${isUser ? 'flex-row-reverse' : ''}">
+                    <div class="flex-shrink-0">
+                        <div class="bg-${isUser ? 'green' : 'blue'}-500 text-white rounded-full w-8 h-8 flex items-center justify-center">
+                            ${isUser ? 'U' : 'A'}
+                        </div>
+                    </div>
+                    <div class="message-box bg-${isUser ? 'green-50' : 'gray-100'} rounded-lg p-4">
+                        ${contentHtml}
+                    </div>
+                </div>
+            `;
+            
+            messagesDiv.insertAdjacentHTML('beforeend', messageHtml);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function switchDB(dbType) {
+            showLoading();
+            $.post('/switch_db', { db_type: dbType }, function(response) {
+                if (response.success) {
+                    addMessage(`Successfully connected to ${dbType}!`);
+                    loadDatabases();
+                } else {
+                    addMessage(`Error connecting to ${dbType}: ${response.error}`);
+                }
+            })
+            .fail(function(err) {
+                addMessage(`Failed to connect to ${dbType}: ${err.responseJSON?.error || 'Unknown error'}`);
+            })
+            .always(hideLoading);
+        }
+
+        function loadDatabases() {
+            showLoading();
+            $.get('/list_databases', function(data) {
+                const select = $('#database-select');
+                select.empty();
+                select.append('<option value="">Select a database</option>');
+                data.databases.forEach(db => {
+                    select.append(`<option value="${db}">${db}</option>`);
+                });
+            })
+            .fail(function(err) {
+                addMessage(`Error loading databases: ${err.responseJSON?.error || 'Unknown error'}`);
+            })
+            .always(hideLoading);
+        }
+
+        function formatSchemaInfo(data) {
+            return data.tables.map(table => `
+                <div class="schema-item">
+                    <h3 class="font-bold text-lg mb-2">📊 ${table.name}</h3>
+                    <div class="space-y-1">
+                        ${table.columns.map(col => `
+                            <div class="text-sm flex justify-between">
+                                <span class="text-blue-600">⚬ ${col.name}</span>
+                                <span class="text-gray-500">${col.type}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function loadDatabaseInfo() {
+            const dbName = $('#database-select').val();
+            if (!dbName) return;
+
+            showLoading();
+            $.get(`/database_info/${dbName}`, function(data) {
+                const schemaHtml = formatSchemaInfo(data);
+                addMessage(`Current database schema:`, false, 'schema');
+                addMessage(schemaHtml, false, 'schema');
+            })
+            .fail(function(err) {
+                addMessage(`Error loading database info: ${err.responseJSON?.error || 'Unknown error'}`);
+            })
+            .always(hideLoading);
+        }
+
+        function submitQuery() {
+            const query = $('#query-input').val();
+            if (!query) return;
+
+            const dbName = $('#database-select').val();
+            if (!dbName) {
+                addMessage('Please select a database first!');
+                return;
+            }
+
+            // Add user message
+            addMessage(query, true, 'text');
+            $('#query-input').val('');
+
+            // Send query
+            showLoading();
+            $.post('/query', {
+                user_message: query,
+                db_name: dbName
+            }, function(response) {
+                if (response.error) {
+                    addMessage(`Error: ${response.error}`);
+                } else {
+                    if (response.generated_query) {
+                        addMessage(response.generated_query);
+                    }
+                    if (response.message) {
+                        addMessage(response.message);
+                    }
+                    if (response.table) {
+                        addMessage(response.table, false, 'table');
+                    }
+                }
+            })
+            .fail(function(err) {
+                addMessage(`Error executing query: ${err.responseJSON?.error || 'Unknown error'}`);
+            })
+            .always(hideLoading);
+        }
+
+        function uploadFile() {
+            if (!currentFile) return;
+
+            const dbName = $('#database-select').val();
+            if (!dbName) {
+                addMessage('Please select a database first!');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', currentFile);
+            formData.append('db_name', dbName);
+            
+            showLoading();
+            addMessage(`Uploading ${currentFile.name}...`);
+            
+            $.ajax({
+                url: '/upload_data',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(response) {
+                    addMessage(response.message);
+                    loadDatabaseInfo();
+                    // Reset file input
+                    document.getElementById('file-upload').value = '';
+                    document.getElementById('upload-btn').disabled = true;
+                    currentFile = null;
+                },
+                error: function(err) {
+                    addMessage(`Upload failed: ${err.responseJSON?.error || 'Unknown error'}`);
+                },
+                complete: hideLoading
+            });
+        }
+
+        function createNewDatabase() {
+            const dbName = prompt("Enter the name for the new database:");
+            if (!dbName) return;  // User cancelled or entered empty string
+            
+            // Basic client-side validation
+            if (!/^[a-zA-Z0-9_]+$/.test(dbName)) {
+                alert("Database name can only contain letters, numbers, and underscores");
+                return;
+            }
+            
+            showLoading();
+            $.post('/create_database', { db_name: dbName })
+                .done(function(response) {
+                    addMessage(response.message);
+                    loadDatabases();  // Refresh the database list
+                })
+                .fail(function(err) {
+                    addMessage(`Failed to create database: ${err.responseJSON?.error || 'Unknown error'}`);
+                })
+                .always(hideLoading);
+        }
+
+        // Initial load
+        $(document).ready(function() {
+            loadDatabases();
+        });
+    </script>
+</body>
+</html>
